@@ -1,0 +1,1569 @@
+<!DOCTYPE html>
+<html lang="pl">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>K44WY3P51 - Mapa Sprzedaży</title>
+
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Lato:wght@400;700&family=Montserrat:wght@500;600;700;800&display=swap"
+    rel="stylesheet">
+
+  <script src="https://unpkg.com/@turf/turf@6/turf.min.js"></script>
+
+  <style>
+    :root {
+      --primary: #0f172a;
+      --accent: #2563eb;
+      --surface: #ffffff;
+      --bg-light: #f1f5f9;
+      --border: #e2e8f0;
+      --glass: rgba(255, 255, 255, 0.95);
+    }
+
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: 'Lato', sans-serif;
+      display: flex;
+      height: 100vh;
+      overflow: hidden;
+      background: #000000;
+    }
+
+    #sidebar {
+      position: absolute;
+      top: 0;
+      left: 0;
+      height: 100%;
+      width: 340px;
+      max-width: 85%;
+      background: var(--surface);
+      z-index: 2000;
+      box-shadow: 5px 0 25px rgba(0, 0, 0, 0.2);
+      display: flex;
+      flex-direction: column;
+      transform: translateX(-105%);
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    #sidebar.active {
+      transform: translateX(0);
+    }
+
+    .sidebar-header {
+      padding: 20px;
+      background: var(--primary);
+      color: #ffffff;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .sidebar-header h2,
+    summary,
+    .city-label,
+    .county-name-label,
+    .fab-btn,
+    .nav-btn,
+    .legend-chip {
+      font-family: 'Montserrat', sans-serif;
+    }
+
+    .sidebar-header h2 {
+      margin: 0;
+      font-size: 1.1rem;
+      font-weight: 700;
+    }
+
+    .close-btn {
+      background: rgba(255, 255, 255, 0.1);
+      border: none;
+      color: #ffffff;
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+    }
+
+    .sidebar-content {
+      flex-grow: 1;
+      overflow-y: auto;
+      padding: 10px;
+    }
+
+    details {
+      background: #ffffff;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      margin-bottom: 12px;
+      overflow: hidden;
+    }
+
+    summary {
+      padding: 16px;
+      font-weight: 700;
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      list-style: none;
+    }
+
+    summary::after {
+      content: '+';
+      font-size: 1.2rem;
+      color: var(--primary);
+    }
+
+    details[open] summary::after {
+      content: '−';
+    }
+
+    .details-body {
+      padding: 16px;
+      border-top: 1px solid var(--border);
+      background: #fcfcfc;
+    }
+
+    input[type="text"] {
+      width: 100%;
+      padding: 12px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 16px;
+      box-sizing: border-box;
+      font-family: 'Lato', sans-serif;
+    }
+
+    .map-switcher-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
+    }
+
+    .map-card {
+      border: 2px solid transparent;
+      border-radius: 8px;
+      overflow: hidden;
+      cursor: pointer;
+      position: relative;
+      height: 60px;
+    }
+
+    .map-card img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .map-card span {
+      position: absolute;
+      bottom: 0;
+      width: 100%;
+      background: rgba(0, 0, 0, 0.6);
+      color: #ffffff;
+      font-size: 10px;
+      text-align: center;
+      padding: 2px 0;
+      font-family: 'Montserrat', sans-serif;
+      font-weight: 600;
+    }
+
+    .map-card.active {
+      border-color: var(--accent);
+    }
+
+    #map {
+      flex-grow: 1;
+      height: 100%;
+      width: 100%;
+      z-index: 1;
+    }
+
+    #floating-legend {
+      position: absolute;
+      z-index: 1000;
+      background: var(--glass);
+      backdrop-filter: blur(10px);
+      border-radius: 12px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.5);
+      bottom: 30px;
+      left: 90px;
+      max-height: 80vh;
+      width: 260px;
+      overflow-y: auto;
+      padding: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+
+    .legend-chip {
+      display: flex;
+      align-items: center;
+      padding: 8px 12px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 0.85rem;
+    }
+
+    .legend-chip.active {
+      background: var(--primary);
+      color: #ffffff;
+    }
+
+    .chip-color {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      margin-right: 10px;
+      flex-shrink: 0;
+      border: 1px solid rgba(0, 0, 0, 0.1);
+    }
+
+    .city-label {
+      background: transparent !important;
+      border: none !important;
+      box-shadow: none !important;
+      font-weight: 800;
+      color: var(--primary);
+      text-shadow: 0 0 4px #ffffff, 0 0 2px #ffffff;
+      font-size: 13px;
+      display: none;
+      margin-top: -8px;
+    }
+
+    .show-labels .city-label {
+      display: block;
+    }
+
+    /* Subtelny przycisk nawigacji */
+    .nav-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      width: auto;
+      margin: 10px auto 0 auto;
+      padding: 8px 16px;
+      background: rgba(37, 99, 235, 0.05);
+      color: #0f172a;
+      border: 1px solid rgba(37, 99, 235, 0.2);
+      text-decoration: none;
+      border-radius: 8px;
+      font-weight: 500;
+      font-size: 0.85rem;
+      transition: all 0.2s ease;
+    }
+
+    .nav-btn:hover {
+      background: rgba(37, 99, 235, 0.1);
+      border-color: rgba(37, 99, 235, 0.3);
+      color: #2563eb;
+    }
+
+    .bottom-controls {
+      position: absolute;
+      bottom: 30px;
+      left: 0;
+      width: 100%;
+      padding: 0 20px;
+      box-sizing: border-box;
+      display: flex;
+      justify-content: space-between;
+      z-index: 1000;
+      pointer-events: none;
+    }
+
+    .fab-btn {
+      pointer-events: auto;
+      background: var(--primary);
+      color: #ffffff;
+      border: none;
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #loader {
+      position: absolute;
+      top: 0;
+      width: 100%;
+      height: 4px;
+      background: linear-gradient(90deg, var(--accent), #60a5fa);
+      z-index: 3000;
+    }
+
+    .setting-item {
+      display: flex;
+      align-items: center;
+      margin-top: 15px;
+      padding-top: 10px;
+      border-top: 1px dashed #eee;
+    }
+
+    .setting-item input {
+      width: 20px;
+      height: 20px;
+      margin-right: 10px;
+      accent-color: var(--primary);
+    }
+
+    .county-label-icon {
+      background: transparent !important;
+      border: none !important;
+    }
+
+    .county-label-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      pointer-events: none;
+    }
+
+    .seller-logo {
+      border-radius: 50%;
+      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+      object-fit: cover;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      color: #ffffff;
+      overflow: hidden;
+      box-sizing: border-box;
+    }
+
+    .county-name-label {
+      margin-top: 4px;
+      font-weight: 800;
+      font-size: 14px;
+      letter-spacing: 0.3px;
+      color: #000000;
+      text-shadow: -1px -1px 0 #ffffff, 1px -1px 0 #ffffff, -1px 1px 0 #ffffff, 1px 1px 0 #ffffff;
+      white-space: nowrap;
+      display: none;
+    }
+
+    #map.show-county-names .county-name-label {
+      display: block;
+    }
+
+    .leaflet-popup-content-wrapper {
+      border-radius: 12px;
+      box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+      font-family: 'Lato', sans-serif;
+      padding: 4px;
+    }
+
+    .leaflet-popup-content {
+      margin: 14px;
+      line-height: 1.6;
+    }
+
+    .leaflet-popup-title {
+      font-family: 'Montserrat', sans-serif;
+      font-weight: 800;
+      font-size: 1.15rem;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 8px;
+      margin-bottom: 8px;
+      color: var(--primary);
+    }
+
+    .leaflet-popup-seller {
+      font-family: 'Montserrat', sans-serif;
+      font-weight: 700;
+      font-size: 1rem;
+      margin-bottom: 10px;
+    }
+
+    .leaflet-popup-row {
+      font-size: 0.95rem;
+      margin-bottom: 4px;
+    }
+
+    .leaflet-popup-row span {
+      color: #64748b;
+    }
+
+    .leaflet-popup-row b {
+      color: var(--primary);
+    }
+
+    /* ===== Planowanie trasy ===== */
+    .route-toggle-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .route-toggle-row input {
+      width: 20px;
+      height: 20px;
+      accent-color: var(--primary);
+      flex-shrink: 0;
+    }
+
+    .route-hint {
+      font-size: 0.8rem;
+      color: #64748b;
+      margin: 8px 0 0 0;
+      line-height: 1.45;
+    }
+
+    #route-panel {
+      position: absolute;
+      top: 15px;
+      left: 15px;
+      z-index: 1500;
+      width: 300px;
+      max-width: calc(100% - 80px);
+      background: var(--glass);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.6);
+      border-radius: 14px;
+      box-shadow: 0 8px 30px rgba(0, 0, 0, 0.18);
+      display: none;
+      flex-direction: column;
+      max-height: 72vh;
+      overflow: hidden;
+    }
+
+    #route-panel.active {
+      display: flex;
+    }
+
+    .route-panel-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 14px;
+      background: var(--primary);
+      color: #ffffff;
+    }
+
+    .route-panel-head h3 {
+      margin: 0;
+      font-family: 'Montserrat', sans-serif;
+      font-size: 0.95rem;
+      font-weight: 700;
+    }
+
+    .route-panel-body {
+      padding: 10px 12px;
+      overflow-y: auto;
+    }
+
+    .route-stops {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+    }
+
+    .route-stop {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 8px;
+      border-radius: 8px;
+      background: #ffffff;
+      border: 1px solid var(--border);
+      margin-bottom: 6px;
+    }
+
+    .route-stop .num {
+      width: 22px;
+      height: 22px;
+      flex-shrink: 0;
+      border-radius: 50%;
+      background: var(--accent);
+      color: #ffffff;
+      font-family: 'Montserrat', sans-serif;
+      font-weight: 700;
+      font-size: 0.75rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .route-stop .nm {
+      flex-grow: 1;
+      font-size: 0.85rem;
+      line-height: 1.2;
+      word-break: break-word;
+    }
+
+    .route-stop .ord {
+      display: flex;
+      flex-direction: column;
+      line-height: 0.7;
+    }
+
+    .route-stop button {
+      border: none;
+      background: transparent;
+      cursor: pointer;
+      color: #64748b;
+      padding: 2px 5px;
+      font-size: 0.8rem;
+      line-height: 1;
+      border-radius: 6px;
+    }
+
+    .route-stop button:hover {
+      background: #f1f5f9;
+      color: #0f172a;
+    }
+
+    .route-summary {
+      display: flex;
+      gap: 14px;
+      align-items: center;
+      margin: 10px 2px 4px 2px;
+      font-size: 0.85rem;
+      color: #475569;
+    }
+
+    .route-summary b {
+      font-family: 'Montserrat', sans-serif;
+      color: var(--primary);
+    }
+
+    .route-empty {
+      font-size: 0.85rem;
+      color: #64748b;
+      padding: 10px 4px;
+      text-align: center;
+      line-height: 1.4;
+    }
+
+    .route-err {
+      font-size: 0.8rem;
+      color: #C0392B;
+      padding: 8px 4px;
+    }
+
+    .route-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    .route-actions button {
+      flex: 1 1 auto;
+      min-width: 88px;
+      border: none;
+      border-radius: 8px;
+      padding: 9px 10px;
+      font-family: 'Montserrat', sans-serif;
+      font-weight: 600;
+      font-size: 0.78rem;
+      cursor: pointer;
+    }
+
+    .btn-opt {
+      background: #0f172a;
+      color: #ffffff;
+    }
+
+    .btn-gmap {
+      background: #1a73e8;
+      color: #ffffff;
+    }
+
+    .btn-clear {
+      background: #f1f5f9;
+      color: #0f172a;
+    }
+
+    .route-add-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      width: 100%;
+      margin-top: 8px;
+      padding: 9px 12px;
+      border: none;
+      border-radius: 8px;
+      background: var(--accent);
+      color: #ffffff;
+      font-family: 'Montserrat', sans-serif;
+      font-weight: 600;
+      font-size: 0.85rem;
+      cursor: pointer;
+    }
+
+    .route-add-btn:hover {
+      background: #1d4ed8;
+    }
+
+    .route-marker {
+      background: var(--accent);
+      color: #ffffff;
+      border: 2px solid #ffffff;
+      border-radius: 50%;
+      width: 26px;
+      height: 26px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: 'Montserrat', sans-serif;
+      font-weight: 700;
+      font-size: 0.8rem;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+    }
+
+    .route-marker.start {
+      background: #27AE60;
+    }
+
+    .route-marker.end {
+      background: #C0392B;
+    }
+
+    /* ===== Wikipedia w dymku ===== */
+    .wiki-box {
+      margin-top: 12px;
+      border-top: 1px solid var(--border);
+      padding-top: 10px;
+    }
+
+    .wiki-divider {
+      font-family: 'Montserrat', sans-serif;
+      font-weight: 700;
+      font-size: 0.8rem;
+      color: #64748b;
+      margin-bottom: 8px;
+    }
+
+    .wiki-loading,
+    .wiki-empty {
+      font-size: 0.85rem;
+      color: #64748b;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .wiki-thumb {
+      width: 100%;
+      max-height: 120px;
+      object-fit: cover;
+      border-radius: 8px;
+      margin-bottom: 8px;
+    }
+
+    .wiki-facts {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 8px;
+    }
+
+    .wiki-fact {
+      flex: 1 1 0;
+      min-width: 92px;
+      background: #f8fafc;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 6px 8px;
+    }
+
+    .wiki-fact span {
+      display: block;
+      font-size: 0.7rem;
+      color: #64748b;
+    }
+
+    .wiki-fact b {
+      font-family: 'Montserrat', sans-serif;
+      color: var(--primary);
+      font-size: 0.9rem;
+    }
+
+    .wiki-extract {
+      font-size: 0.85rem;
+      line-height: 1.5;
+      color: #334155;
+      max-height: 150px;
+      overflow-y: auto;
+    }
+
+    .wiki-link {
+      display: inline-block;
+      margin-top: 8px;
+      font-size: 0.82rem;
+      color: var(--accent);
+      text-decoration: none;
+      font-weight: 600;
+    }
+
+    .spinner {
+      width: 14px;
+      height: 14px;
+      border: 2px solid #cbd5e1;
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      display: inline-block;
+      animation: spin 0.7s linear infinite;
+    }
+
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    /* ===== Powiadomienie ===== */
+    #toast {
+      position: absolute;
+      bottom: 110px;
+      left: 50%;
+      transform: translateX(-50%) translateY(20px);
+      z-index: 2500;
+      background: var(--primary);
+      color: #ffffff;
+      padding: 10px 18px;
+      border-radius: 30px;
+      font-family: 'Montserrat', sans-serif;
+      font-weight: 600;
+      font-size: 0.85rem;
+      opacity: 0;
+      transition: all 0.25s ease;
+      pointer-events: none;
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+      max-width: 80%;
+      text-align: center;
+    }
+
+    #toast.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+  </style>
+</head>
+
+<body>
+  <div id="loader"></div>
+  <div id="overlay" onclick="toggleSidebar()"></div>
+
+  <div id="sidebar">
+    <div class="sidebar-header">
+      <h2>Panel Sterowania</h2>
+      <button class="close-btn" onclick="toggleSidebar()">✕</button>
+    </div>
+    <div class="sidebar-content">
+      <details open>
+        <summary>🔍 Znajdź Powiat</summary>
+        <div class="details-body">
+          <input type="text" id="search" placeholder="Wpisz nazwę powiatu..." autocomplete="off">
+          <div id="search-results" style="max-height: 150px; overflow-y: auto;"></div>
+        </div>
+      </details>
+      <details open>
+        <summary>👤 Ustawienia Widoku</summary>
+        <div class="details-body">
+          <label>Przezroczystość powiatów:</label>
+          <input type="range" id="opacity-range" min="0" max="1" step="0.1" value="0.7" style="width: 100%;">
+          <div class="setting-item">
+            <input type="checkbox" id="toggle-cities" checked>
+            <label for="toggle-cities">Pokaż miasta</label>
+          </div>
+          <div class="setting-item">
+            <input type="checkbox" id="toggle-woj" checked>
+            <label for="toggle-woj">Pokaż granice województw</label>
+          </div>
+          <div class="setting-item">
+            <input type="checkbox" id="toggle-labels" checked>
+            <label for="toggle-labels">Pokaż buzie</label>
+          </div>
+        </div>
+      </details>
+      <details>
+        <summary>🗺️ Podkład mapowy</summary>
+        <div class="details-body map-switcher-grid">
+          <div class="map-card active" onclick="setBasemap('osm', this)">
+            <img src="https://tile.openstreetmap.org/6/33/21.png"><span>Drogowa</span>
+          </div>
+          <div class="map-card" onclick="setBasemap('sat', this)">
+            <img
+              src="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/6/21/33"><span>Satelita</span>
+          </div>
+        </div>
+      </details>
+      <details>
+        <summary>🧭 Planowanie trasy</summary>
+        <div class="details-body">
+          <div class="route-toggle-row">
+            <input type="checkbox" id="toggle-route">
+            <label for="toggle-route">Pokaż panel trasy</label>
+          </div>
+          <p class="route-hint">Kliknij powiat lub miasto na mapie, a w dymku użyj przycisku
+            „+ Dodaj do trasy”. Kolejność zmienisz strzałkami albo przyciskiem „Optymalizuj”.
+            Gotową trasę otworzysz w Nawigacji Google jednym kliknięciem.</p>
+        </div>
+      </details>
+    </div>
+  </div>
+
+  <div id="map"></div>
+  <div id="floating-legend"></div>
+
+  <div id="route-panel">
+    <div class="route-panel-head">
+      <h3>🧭 Trasa</h3>
+      <button class="close-btn" onclick="toggleRouteMode(false)">✕</button>
+    </div>
+    <div class="route-panel-body">
+      <ul class="route-stops" id="route-stops"></ul>
+      <div id="route-summary"></div>
+      <div class="route-actions">
+        <button class="btn-opt" onclick="optimizeRoute()">Optymalizuj</button>
+        <button class="btn-gmap" onclick="openRouteInGoogleMaps()">Google Maps</button>
+        <button class="btn-clear" onclick="clearRoute()">Wyczyść</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast"></div>
+
+  <div class="bottom-controls">
+    <button class="fab-btn" style="width:56px; height:56px; border-radius:50%; font-size:24px;"
+      onclick="toggleSidebar()">☰</button>
+    <button class="fab-btn" id="route-fab"
+      style="padding: 12px 18px; border-radius: 50px; font-weight: 700; display: flex; align-items:center; gap:6px;"
+      onclick="toggleRouteMode()">
+      🧭 Trasa
+    </button>
+    <button class="fab-btn"
+      style="padding: 12px 20px; border-radius: 50px; font-weight: 700; display: flex; align-items:center; gap:8px;"
+      onclick="locateUser()">
+      <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+        <path d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+      </svg>
+      KAJ JO JE
+    </button>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
+
+  <script>
+    const SHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQeWsr5Gpjk0ZpcHPdQr_95TKZaNVEjwPXT523dzFV7U6NzC1YpbXhG89zO1j6VICHqiS45tkZ6XEr3/pub?output=csv';
+    const GEOJSON_FILE = 'powiaty4205.geojson';
+    const CITIES_GEOJSON = 'miasta.geojson';
+    const WOJ_GEOJSON = 'wojewodztwa.geojson';
+
+    let map, geoLayer, citiesLayer, wojLayer, countyLabelsLayer, userLocationMarker;
+    let fullData = {};
+    let powiatyList = [];
+
+    // Stan planowania trasy
+    let routeMode = false;
+    let stops = [];
+    let routeLineLayer = null, routeMarkersLayer = null;
+    let routeSummary = null, routeError = null;
+
+    // Cache odpowiedzi z Wikipedii, zeby nie pobierac dwa razy tego samego powiatu
+    const wikiCache = {};
+
+    // WYDAJNOSC: bufor przezroczystosci, czytany raz przy zmianie suwaka
+    // zamiast odpytywania DOM dla kazdego z ~380 powiatow przy kazdym renderze
+    let currentOpacity = 0.7;
+
+    const sellerColors = {
+      "Michał": "#2980B9",
+      "nikt": "#808080",
+      "Nikt": "#808080"
+    };
+
+    const colors = ['#2C3E50', '#C0392B', '#27AE60', '#F39C12', '#8E44AD', '#16A085', '#D35400', '#2980B9'];
+
+    const baseLayers = {
+      osm: L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap' }),
+      sat: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { attribution: '© Esri' })
+    };
+
+    function toggleSidebar() {
+      document.getElementById('sidebar').classList.toggle('active');
+      document.getElementById('overlay').classList.toggle('active');
+    }
+
+    function cleanName(n) { return n ? n.toString().toLowerCase().trim().replace("powiat", "").replace("miasto", "").trim() : ""; }
+
+    function getSellerColor(s) {
+      if (!s) return '#cbd5e1';
+      if (!sellerColors[s]) sellerColors[s] = colors[Object.keys(sellerColors).length % colors.length];
+      return sellerColors[s];
+    }
+
+    let activeSellerFilter = 'all';
+
+    function getStyle(feature) {
+      const name = cleanName(feature.properties.nazwa || feature.properties.Nazwa);
+      const row = fullData[name];
+      const isMatch = activeSellerFilter === 'all' || (row && row.Sprzedawca === activeSellerFilter);
+      return {
+        fillColor: getSellerColor(row ? row.Sprzedawca : null),
+        weight: 0.8,
+        color: 'rgba(255, 255, 255, 0.6)',
+        fillOpacity: isMatch ? currentOpacity : 0.05,
+        opacity: isMatch ? 1 : 0.1
+      };
+    }
+
+    function setBasemap(type, el) {
+      Object.values(baseLayers).forEach(layer => map.removeLayer(layer));
+      map.addLayer(baseLayers[type]);
+      document.querySelectorAll('.map-card').forEach(c => c.classList.remove('active'));
+      if (el) el.classList.add('active');
+    }
+
+    function getSafeCenter(layer) {
+      try {
+        if (layer.getBounds) return layer.getBounds().getCenter();
+      } catch (e) { return null; }
+      return null;
+    }
+
+    async function init() {
+      document.getElementById('loader').style.display = 'block';
+
+      // WYDAJNOSC: preferCanvas rysuje wszystkie poligony i kolka miast na jednym
+      // plotnie zamiast tworzyc setki elementow SVG. Duzy zysk przy zoomie i panoramowaniu.
+      map = L.map('map', { zoomControl: false, minZoom: 6, preferCanvas: true }).setView([52.06, 19.48], 6);
+      L.control.zoom({ position: 'topright' }).addTo(map);
+      map.addLayer(baseLayers.osm);
+
+      map.createPane('wojPane'); map.getPane('wojPane').style.zIndex = 450;
+      map.createPane('labelsPane'); map.getPane('labelsPane').style.zIndex = 550;
+      map.createPane('citiesPane'); map.getPane('citiesPane').style.zIndex = 650;
+      map.createPane('routePane'); map.getPane('routePane').style.zIndex = 660;
+      map.createPane('routeMarkerPane'); map.getPane('routeMarkerPane').style.zIndex = 670;
+
+      // Po otwarciu dymka powiatu doczytujemy informacje z Wikipedii.
+      map.on('popupopen', (e) => {
+        const el = e.popup.getElement();
+        if (!el) return;
+        const box = el.querySelector('.wiki-box[data-loaded="false"]');
+        if (box) { box.dataset.loaded = 'true'; loadWikiInto(box); }
+      });
+
+      map.on('zoomend', function () {
+        const zoom = map.getZoom();
+        const mapEl = document.getElementById('map');
+        if (map.hasLayer(citiesLayer) && zoom > 11) mapEl.classList.add('show-labels');
+        else mapEl.classList.remove('show-labels');
+
+        const labelsEnabled = document.getElementById('toggle-labels').checked;
+        if (countyLabelsLayer) {
+          if (labelsEnabled && zoom >= 8 && zoom <= 11) {
+            if (!map.hasLayer(countyLabelsLayer)) map.addLayer(countyLabelsLayer);
+            if (zoom >= 9) mapEl.classList.add('show-county-names');
+            else mapEl.classList.remove('show-county-names');
+          } else {
+            if (map.hasLayer(countyLabelsLayer)) map.removeLayer(countyLabelsLayer);
+            mapEl.classList.remove('show-county-names');
+          }
+        }
+      });
+
+      try {
+        const [csvRes, geoRes, citiesRes, wojRes] = await Promise.all([
+          fetch(SHEET_URL), fetch(GEOJSON_FILE), fetch(CITIES_GEOJSON), fetch(WOJ_GEOJSON)
+        ]);
+
+        const csvText = await csvRes.text();
+        const powiatyGeo = await geoRes.json();
+        const citiesGeo = await citiesRes.json();
+        const wojGeo = await wojRes.json();
+
+        const parsedCsv = Papa.parse(csvText, { header: true, skipEmptyLines: true }).data;
+
+        // Straznik: jesli arkusz znow zgubi naglowek, od razu widac powod w konsoli
+        if (parsedCsv.length && !('Nazwa' in parsedCsv[0])) {
+          console.error('CSV bez naglowka "Nazwa"! Sprawdz pierwszy wiersz arkusza Google.', parsedCsv[0]);
+        }
+
+        parsedCsv.forEach(row => { if (row.Nazwa) fullData[cleanName(row.Nazwa)] = row; });
+
+        // Statystyki z obsługą zliczania dużych miast
+        const stats = {};
+        parsedCsv.forEach(row => {
+          if (row.Sprzedawca) {
+            if (!stats[row.Sprzedawca]) stats[row.Sprzedawca] = { total: 0, bigCityCounties: new Set() };
+            stats[row.Sprzedawca].total += 1;
+          }
+        });
+
+        // WYDAJNOSC: liczymy bbox kazdego powiatu RAZ, z gory.
+        // Potem przy dopasowaniu miasta tani test bbox odrzuca prawie wszystkie powiaty,
+        // a kosztowny booleanPointInPolygon odpala sie tylko dla 1-3 kandydatow zamiast dla ~380.
+        const countyIndex = powiatyGeo.features
+          .filter(c => c.geometry)
+          .map(c => ({
+            feature: c,
+            cName: cleanName(c.properties.nazwa || c.properties.Nazwa),
+            bbox: turf.bbox(c) // [minLng, minLat, maxLng, maxLat]
+          }));
+
+        const bigCities = citiesGeo.features.filter(f => f.properties.LICZBAMIESZKANCOW > 20000);
+
+        bigCities.forEach(city => {
+          const coords = city.geometry && city.geometry.coordinates;
+          if (!coords) return;
+          const lng = coords[0], lat = coords[1];
+
+          for (const entry of countyIndex) {
+            const b = entry.bbox;
+            // tani odrzut po prostokacie otaczajacym
+            if (lng < b[0] || lng > b[2] || lat < b[1] || lat > b[3]) continue;
+            // dopiero teraz drogi test geometryczny
+            if (turf.booleanPointInPolygon(city, entry.feature)) {
+              const rData = fullData[entry.cName];
+              if (rData && rData.Sprzedawca && stats[rData.Sprzedawca]) {
+                stats[rData.Sprzedawca].bigCityCounties.add(entry.cName);
+              }
+              break;
+            }
+          }
+        });
+
+        countyLabelsLayer = L.layerGroup();
+
+        geoLayer = L.geoJson(powiatyGeo, {
+          style: getStyle,
+          onEachFeature: (f, l) => {
+            const name = f.properties.nazwa || f.properties.Nazwa;
+            powiatyList.push({ name: name, layer: l });
+            const data = fullData[cleanName(name)];
+
+            let htmlPopup = `<div class="leaflet-popup-title">${name}</div>`;
+            if (data) {
+              const popupColor = getSellerColor(data.Sprzedawca);
+              htmlPopup += `<div class="leaflet-popup-seller" style="color:${popupColor}">${data.Sprzedawca || 'Brak'}</div>`;
+              Object.entries(data).forEach(([k, v]) => {
+                if (k !== 'Nazwa' && k !== 'Sprzedawca' && k !== 'Foto') {
+                  htmlPopup += `<div class="leaflet-popup-row"><span>${k}:</span> <b>${v}</b></div>`;
+                }
+              });
+            }
+            // Przycisk dodania powiatu do trasy (srodek powiatu jako przystanek)
+            const cc = l.getBounds().getCenter();
+            htmlPopup += `<button class="route-add-btn" onclick="addStopFromPopup('${(name || '').replace(/'/g, "\\'")}', ${cc.lat}, ${cc.lng}, 'powiat')">+ Dodaj do trasy</button>`;
+            // Kontener na dane z internetu, wypelniany przy otwarciu dymka
+            htmlPopup += `<div class="wiki-box" data-loaded="false" data-county="${(name || '').replace(/"/g, '&quot;')}"><div class="wiki-loading"><span class="spinner"></span> Wczytywanie informacji...</div></div>`;
+
+            l.bindPopup(htmlPopup, { minWidth: 240, maxWidth: 320, maxHeight: 420 });
+            l.on('click', (e) => {
+              map.flyToBounds(e.target.getBounds(), { padding: [20, 20], maxZoom: 10 });
+            });
+
+            const center = getSafeCenter(l);
+            if (center) {
+              const bounds = l.getBounds();
+              const width = Math.abs(bounds.getEast() - bounds.getWest());
+              const height = Math.abs(bounds.getNorth() - bounds.getSouth());
+              const factor = Math.sqrt(width * height);
+              const logoSize = Math.max(25, Math.min(65, factor * 80));
+
+              const sName = data ? (data.Sprzedawca || 'Brak') : 'Brak';
+              const sColor = getSellerColor(data ? data.Sprzedawca : null);
+              const sImg = sName !== 'Brak' ? `${sName}.png` : null;
+              const initial = sName.charAt(0);
+
+              const fallbackDiv = `<div class="seller-logo" style="width:${logoSize}px; height:${logoSize}px; background:${sColor}; font-size:${logoSize / 2}px; border: 2.5px solid ${sColor};">${initial}</div>`;
+
+              let logoHtml = '';
+              if (sImg) {
+                // POPRAWKA: bezpieczne cudzysłowy zapobiegają błędom "" >
+                const safeFallbackDiv = fallbackDiv.replace(/"/g, '&quot;');
+                logoHtml = `<img src="${sImg}" class="seller-logo" style="width:${logoSize}px; height:${logoSize}px; border: 2.5px solid ${sColor}; background-color: #ffffff;" onerror="this.outerHTML='${safeFallbackDiv}'">`;
+              } else {
+                logoHtml = fallbackDiv;
+              }
+
+              const labelHtml = `<div class="county-label-container">${logoHtml}<div class="county-name-label">${cleanName(name)}</div></div>`;
+              const labelIcon = L.divIcon({ html: labelHtml, className: 'county-label-icon', iconSize: [120, 100], iconAnchor: [60, 50] });
+              L.marker(center, { icon: labelIcon, pane: 'labelsPane', interactive: false }).addTo(countyLabelsLayer);
+            }
+          }
+        }).addTo(map);
+
+        wojLayer = L.geoJson(wojGeo, {
+          pane: 'wojPane', interactive: false,
+          style: { color: '#000000', weight: 3, fillOpacity: 0, opacity: 1 }
+        }).addTo(map);
+
+        citiesLayer = L.geoJson(citiesGeo, {
+          pane: 'citiesPane',
+          pointToLayer: (f, latlng) => L.circleMarker(latlng, { radius: 6, fillColor: "#ffffff", color: "#000000", weight: 2, fillOpacity: 1 }),
+          filter: (f) => f.properties.LICZBAMIESZKANCOW && !isNaN(f.properties.LICZBAMIESZKANCOW) && f.properties.LICZBAMIESZKANCOW > 20000,
+          onEachFeature: (f, l) => {
+            const name = f.properties.NAZWA || "Miejscowość";
+            const population = f.properties.LICZBAMIESZKANCOW;
+            l.bindTooltip(name, { permanent: true, direction: 'top', className: 'city-label', offset: [0, -8] });
+
+            const lat = l.getLatLng().lat;
+            const lng = l.getLatLng().lng;
+            const fPop = new Intl.NumberFormat('pl-PL', { maximumFractionDigits: 0 }).format(population);
+
+            const popHtml = `<div class="leaflet-popup-row" style="margin-bottom: 12px; color: #64748b; font-size: 0.95rem;">Mieszkańców: <b style="color: #0f172a; font-size: 1.05rem;">${fPop}</b></div>`;
+            const htmlPopup = `
+              <div class="leaflet-popup-title" style="margin-bottom: 8px; color: #0f172a;">${name}</div>
+              ${popHtml}
+              <button class="route-add-btn" onclick="addStopFromPopup('${name.replace(/'/g, "\\'")}', ${lat}, ${lng}, 'miasto')">+ Dodaj do trasy</button>
+              <a href="https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}" target="_blank" class="nav-btn">
+                <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 9l3 3m0 0l-3 3m3-3H8m13 0a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                Prowadź do
+              </a>`;
+            l.bindPopup(htmlPopup, { minWidth: 220, maxWidth: 300 });
+          }
+        }).addTo(map);
+
+        createFloatingLegend(stats);
+        setupSearch();
+
+        // WYDAJNOSC: suwak przezroczystosci.
+        // Wartosc czytamy raz do bufora, a samo przerysowanie throttlujemy przez
+        // requestAnimationFrame, dzieki czemu przeciaganie suwaka jest plynne.
+        const opacityRange = document.getElementById('opacity-range');
+        currentOpacity = parseFloat(opacityRange.value);
+        let opacityRaf = null;
+        opacityRange.oninput = () => {
+          currentOpacity = parseFloat(opacityRange.value);
+          if (opacityRaf) return;
+          opacityRaf = requestAnimationFrame(() => {
+            geoLayer.setStyle(getStyle);
+            opacityRaf = null;
+          });
+        };
+
+        document.getElementById('toggle-cities').onchange = (e) => { if (e.target.checked) map.addLayer(citiesLayer); else map.removeLayer(citiesLayer); };
+        document.getElementById('toggle-woj').onchange = (e) => { if (e.target.checked) map.addLayer(wojLayer); else map.removeLayer(wojLayer); };
+        document.getElementById('toggle-labels').onchange = () => map.fire('zoomend');
+        document.getElementById('toggle-route').onchange = (e) => toggleRouteMode(e.target.checked);
+        document.getElementById('loader').style.display = 'none';
+      } catch (err) { console.error("Błąd:", err); }
+    }
+
+    // Funkcja do poprawnej polskiej odmiany słowa "miasto"
+    function getMiastoOdmiana(liczba) {
+      if (liczba === 1) return "miasto";
+
+      const reszta10 = liczba % 10;
+      const reszta100 = liczba % 100;
+
+      // Dla końcówek 2, 3, 4 (z wyłączeniem 12, 13, 14, które są "miast")
+      if (reszta10 >= 2 && reszta10 <= 4 && (reszta100 < 12 || reszta100 > 14)) {
+        return "miasta";
+      }
+
+      // Dla wszystkich innych (0, 5-9 oraz wyjątków)
+      return "miast";
+    }
+
+    function createFloatingLegend(stats) {
+      const legend = document.getElementById('floating-legend');
+      legend.innerHTML = '';
+
+      let totalC = 0;
+      let allBigC = new Set();
+
+      Object.values(stats).forEach(s => {
+        totalC += s.total;
+        s.bigCityCounties.forEach(c => allBigC.add(c));
+      });
+
+      const allBigCSize = allBigC.size;
+      const allItem = document.createElement('div');
+      allItem.className = 'legend-chip active';
+      // Użycie funkcji dla "Wszyscy"
+      allItem.innerHTML = `<div class="chip-color" style="background:#000000"></div><div class="chip-label">Wszyscy (${totalC} | ${allBigCSize} ${getMiastoOdmiana(allBigCSize)})</div>`;
+      allItem.onclick = function () { setActiveFilter('all', this); };
+      legend.appendChild(allItem);
+
+      Object.entries(stats).sort((a, b) => b[1].total - a[1].total).forEach(([seller, data]) => {
+        const item = document.createElement('div');
+        item.className = 'legend-chip';
+        const cityCount = data.bigCityCounties.size;
+
+        // Użycie funkcji dla poszczególnych sprzedawców
+        item.innerHTML = `<div class="chip-color" style="background:${getSellerColor(seller)}"></div><div class="chip-label">${seller} (${data.total} | ${cityCount} ${getMiastoOdmiana(cityCount)})</div>`;
+        item.onclick = function () { setActiveFilter(seller, this); };
+        legend.appendChild(item);
+      });
+    }
+
+    function setActiveFilter(seller, elem) {
+      activeSellerFilter = seller;
+      geoLayer.setStyle(getStyle);
+      document.querySelectorAll('.legend-chip').forEach(c => c.classList.remove('active'));
+      elem.classList.add('active');
+    }
+
+    function locateUser() {
+      map.locate({ setView: true, maxZoom: 10 });
+      map.once('locationfound', (e) => {
+        if (userLocationMarker) map.removeLayer(userLocationMarker);
+        userLocationMarker = L.circleMarker(e.latlng, { radius: 8, fillColor: '#2563eb', color: '#ffffff', fillOpacity: 1 }).addTo(map);
+      });
+    }
+
+    function setupSearch() {
+      const input = document.getElementById('search');
+      const res = document.getElementById('search-results');
+      input.addEventListener('input', (e) => {
+        const q = cleanName(e.target.value);
+        res.innerHTML = '';
+        if (q.length < 2) return;
+        powiatyList.filter(p => cleanName(p.name).includes(q)).slice(0, 5).forEach(m => {
+          const d = document.createElement('div');
+          d.style.padding = "12px"; d.style.borderBottom = "1px solid #e2e8f0"; d.style.cursor = "pointer";
+          d.innerText = m.name;
+          d.onclick = () => {
+            input.value = m.name; res.innerHTML = '';
+            toggleSidebar(); map.flyToBounds(m.layer.getBounds(), { maxZoom: 10 });
+            setTimeout(() => m.layer.openPopup(), 1500);
+          };
+          res.appendChild(d);
+        });
+      });
+    }
+
+    /* ============================================================
+       PLANOWANIE TRASY (routing przez publiczny serwer OSRM)
+       ============================================================ */
+
+    function toggleRouteMode(force) {
+      routeMode = (typeof force === 'boolean') ? force : !routeMode;
+      const cb = document.getElementById('toggle-route');
+      if (cb) cb.checked = routeMode;
+      document.getElementById('route-panel').classList.toggle('active', routeMode);
+      const fab = document.getElementById('route-fab');
+      if (fab) fab.style.background = routeMode ? 'var(--accent)' : 'var(--primary)';
+      if (routeMode) {
+        showToast('Panel trasy: dodawaj przystanki przyciskiem w dymku powiatu lub miasta');
+        updateRoutePanel();
+      }
+    }
+
+    function addStop(stop) {
+      stops.push(stop);
+      showToast('Dodano do trasy: ' + stop.name);
+      calcRoute();
+    }
+
+    // Wywolywane z przycisku w dymku (powiat lub miasto)
+    function addStopFromPopup(name, lat, lng, type) {
+      toggleRouteMode(true);              // pokaz panel trasy
+      addStop({ name: name, latlng: { lat: lat, lng: lng }, type: type });
+      map.closePopup();
+    }
+
+    function removeStop(i) { stops.splice(i, 1); calcRoute(); }
+
+    function moveStop(i, dir) {
+      const j = i + dir;
+      if (j < 0 || j >= stops.length) return;
+      const t = stops[i]; stops[i] = stops[j]; stops[j] = t;
+      calcRoute();
+    }
+
+    function clearRoute() {
+      stops = []; routeSummary = null; routeError = null;
+      calcRoute();
+    }
+
+    function osrmCoords(arr) {
+      return arr.map(s => s.latlng.lng + ',' + s.latlng.lat).join(';');
+    }
+
+    async function calcRoute() {
+      drawRouteMarkers();
+      if (stops.length < 2) { drawRouteLine(null); routeSummary = null; routeError = null; updateRoutePanel(); return; }
+      routeError = null;
+      updateRoutePanel(true);
+      try {
+        const url = 'https://router.project-osrm.org/route/v1/driving/' + osrmCoords(stops) + '?overview=full&geometries=geojson';
+        const r = await fetch(url);
+        const j = await r.json();
+        if (j.code !== 'Ok' || !j.routes || !j.routes.length) throw new Error('no route');
+        routeSummary = { distance: j.routes[0].distance, duration: j.routes[0].duration };
+        drawRouteLine(j.routes[0].geometry);
+      } catch (e) {
+        routeError = 'Nie udalo sie wyznaczyc trasy. Sprobuj ponownie za chwile.';
+        routeSummary = null;
+        drawRouteLine(null);
+      }
+      updateRoutePanel();
+    }
+
+    async function optimizeRoute() {
+      if (stops.length < 3) { showToast('Dodaj co najmniej 3 przystanki'); return; }
+      updateRoutePanel(true);
+      try {
+        const url = 'https://router.project-osrm.org/trip/v1/driving/' + osrmCoords(stops) +
+          '?roundtrip=false&source=first&destination=last&overview=full&geometries=geojson';
+        const r = await fetch(url);
+        const j = await r.json();
+        if (j.code !== 'Ok' || !j.trips || !j.trips.length) throw new Error('no trip');
+        const newStops = new Array(stops.length);
+        j.waypoints.forEach((w, i) => { newStops[w.waypoint_index] = stops[i]; });
+        stops = newStops;
+        routeSummary = { distance: j.trips[0].distance, duration: j.trips[0].duration };
+        drawRouteLine(j.trips[0].geometry);
+        drawRouteMarkers();
+        showToast('Kolejnosc zoptymalizowana');
+      } catch (e) {
+        routeError = 'Optymalizacja sie nie powiodla. Sprobuj ponownie.';
+      }
+      updateRoutePanel();
+    }
+
+    function drawRouteLine(geometry) {
+      if (routeLineLayer) { map.removeLayer(routeLineLayer); routeLineLayer = null; }
+      if (!geometry) return;
+      routeLineLayer = L.geoJSON(geometry, {
+        pane: 'routePane',
+        style: { color: '#1a73e8', weight: 6, opacity: 0.85, lineCap: 'round' }
+      }).addTo(map);
+    }
+
+    function drawRouteMarkers() {
+      if (!routeMarkersLayer) routeMarkersLayer = L.layerGroup().addTo(map);
+      routeMarkersLayer.clearLayers();
+      stops.forEach((s, i) => {
+        let cls = 'route-marker';
+        if (i === 0) cls += ' start';
+        else if (i === stops.length - 1) cls += ' end';
+        const icon = L.divIcon({
+          className: '',
+          html: '<div class="' + cls + '">' + (i + 1) + '</div>',
+          iconSize: [26, 26], iconAnchor: [13, 13]
+        });
+        L.marker(s.latlng, { icon: icon, pane: 'routeMarkerPane' }).addTo(routeMarkersLayer);
+      });
+    }
+
+    function fmtKm(m) { return new Intl.NumberFormat('pl-PL', { maximumFractionDigits: 1 }).format(m / 1000); }
+
+    function fmtDur(sec) {
+      const h = Math.floor(sec / 3600);
+      const m = Math.round((sec % 3600) / 60);
+      return h > 0 ? (h + ' h ' + m + ' min') : (m + ' min');
+    }
+
+    function updateRoutePanel(loading) {
+      const ul = document.getElementById('route-stops');
+      const sum = document.getElementById('route-summary');
+      if (!ul) return;
+
+      if (!stops.length) {
+        ul.innerHTML = '<div class="route-empty">Brak przystankow. Otworz dymek powiatu lub miasta i kliknij „+ Dodaj do trasy”.</div>';
+        sum.innerHTML = '';
+        return;
+      }
+
+      ul.innerHTML = stops.map((s, i) => (
+        '<li class="route-stop">' +
+        '<div class="num">' + (i + 1) + '</div>' +
+        '<div class="nm">' + s.name + '</div>' +
+        '<div class="ord">' +
+        '<button title="W gore" onclick="moveStop(' + i + ',-1)">&#9650;</button>' +
+        '<button title="W dol" onclick="moveStop(' + i + ',1)">&#9660;</button>' +
+        '</div>' +
+        '<button title="Usun" onclick="removeStop(' + i + ')">&#10005;</button>' +
+        '</li>'
+      )).join('');
+
+      let s = '';
+      if (loading) {
+        s = '<div class="route-summary"><span class="spinner"></span> Liczenie trasy...</div>';
+      } else if (routeError) {
+        s = '<div class="route-err">' + routeError + '</div>';
+      } else if (routeSummary) {
+        s = '<div class="route-summary"><div>Dystans: <b>' + fmtKm(routeSummary.distance) +
+          ' km</b></div><div>Czas: <b>' + fmtDur(routeSummary.duration) + '</b></div></div>';
+      } else if (stops.length < 2) {
+        s = '<div class="route-empty">Dodaj kolejny przystanek, aby wyznaczyc trase.</div>';
+      }
+      sum.innerHTML = s;
+    }
+
+    function openRouteInGoogleMaps() {
+      if (stops.length < 2) { showToast('Potrzebne min. 2 przystanki'); return; }
+      const o = stops[0], d = stops[stops.length - 1], mids = stops.slice(1, -1);
+      let url = 'https://www.google.com/maps/dir/?api=1&travelmode=driving' +
+        '&origin=' + o.latlng.lat + ',' + o.latlng.lng +
+        '&destination=' + d.latlng.lat + ',' + d.latlng.lng;
+      if (mids.length) url += '&waypoints=' + mids.map(s => s.latlng.lat + ',' + s.latlng.lng).join('|');
+      if (stops.length > 11) showToast('Uwaga: Google Maps obsluguje ok. 10 punktow');
+      window.open(url, '_blank');
+    }
+
+    let toastTimer = null;
+    function showToast(msg) {
+      const t = document.getElementById('toast');
+      if (!t) return;
+      t.textContent = msg;
+      t.classList.add('show');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => t.classList.remove('show'), 2200);
+    }
+
+    /* ============================================================
+       INFORMACJE O POWIECIE Z INTERNETU (Wikipedia + Wikidane)
+       ============================================================ */
+
+    async function loadWikiInto(box) {
+      const raw = box.dataset.county || '';
+      if (wikiCache[raw]) { renderWiki(box, wikiCache[raw]); return; }
+      box.innerHTML = '<div class="wiki-divider">Z internetu</div><div class="wiki-loading"><span class="spinner"></span> Pobieranie z Wikipedii...</div>';
+      try {
+        const info = await fetchPowiatInfo(raw);
+        if (!info) {
+          box.innerHTML = '<div class="wiki-divider">Z internetu</div><div class="wiki-empty">Nie znaleziono artykulu dla tego powiatu.</div>';
+          return;
+        }
+        wikiCache[raw] = info;
+        renderWiki(box, info);
+      } catch (e) {
+        box.innerHTML = '<div class="wiki-divider">Z internetu</div><div class="wiki-empty">Nie udalo sie pobrac danych (sprawdz polaczenie).</div>';
+      }
+    }
+
+    async function fetchPowiatInfo(rawName) {
+      const bare = rawName.replace(/powiat/ig, '').replace(/miasto/ig, '').replace(/\s+/g, ' ').trim();
+      const titles = [];
+      if (/powiat/i.test(rawName)) titles.push(rawName.trim());
+      titles.push('Powiat ' + bare);
+      titles.push(bare);
+
+      let summary = null;
+      for (const t of titles) {
+        summary = await wikiSummary(t);
+        if (summary) break;
+      }
+      if (!summary) {
+        const title = await wikiSearchTitle('powiat ' + bare) || await wikiSearchTitle(bare);
+        if (title) summary = await wikiSummary(title);
+      }
+      if (!summary) return null;
+
+      let facts = {};
+      if (summary.wikibase_item) {
+        facts = await wikidataFacts(summary.wikibase_item);
+      }
+      return {
+        title: summary.title,
+        extract: summary.extract,
+        thumb: summary.thumbnail ? summary.thumbnail.source : null,
+        url: (summary.content_urls && summary.content_urls.desktop) ? summary.content_urls.desktop.page
+          : ('https://pl.wikipedia.org/wiki/' + encodeURIComponent(summary.title)),
+        facts: facts
+      };
+    }
+
+    async function wikiSummary(title) {
+      try {
+        const r = await fetch('https://pl.wikipedia.org/api/rest_v1/page/summary/' +
+          encodeURIComponent(title.replace(/ /g, '_')), { headers: { accept: 'application/json' } });
+        if (!r.ok) return null;
+        const j = await r.json();
+        if (j.type && j.type.indexOf('disambiguation') !== -1) return null;
+        if (!j.extract) return null;
+        return j;
+      } catch (e) { return null; }
+    }
+
+    async function wikiSearchTitle(q) {
+      try {
+        const r = await fetch('https://pl.wikipedia.org/w/rest.php/v1/search/page?q=' +
+          encodeURIComponent(q) + '&limit=1');
+        if (!r.ok) return null;
+        const j = await r.json();
+        if (j.pages && j.pages.length) return j.pages[0].title;
+        return null;
+      } catch (e) { return null; }
+    }
+
+    async function wikidataFacts(qid) {
+      try {
+        const r = await fetch('https://www.wikidata.org/wiki/Special:EntityData/' + qid + '.json');
+        if (!r.ok) return {};
+        const j = await r.json();
+        const ent = j.entities && j.entities[qid];
+        if (!ent) return {};
+        const claims = ent.claims || {};
+        const out = {};
+        const pop = latestClaim(claims['P1082']);   // liczba ludnosci
+        if (pop != null) out.ludnosc = pop;
+        const area = numClaim(claims['P2046']);      // powierzchnia (km2)
+        if (area != null) out.powierzchnia = area;
+        return out;
+      } catch (e) { return {}; }
+    }
+
+    function latestClaim(arr) {
+      if (!arr || !arr.length) return null;
+      let best = null, bestYear = -1;
+      arr.forEach(c => {
+        const v = c.mainsnak && c.mainsnak.datavalue && c.mainsnak.datavalue.value;
+        if (!v) return;
+        const amt = parseFloat((v.amount !== undefined ? v.amount : v).toString());
+        let year = 0;
+        const q = c.qualifiers && c.qualifiers.P585 && c.qualifiers.P585[0];
+        if (q && q.datavalue && q.datavalue.value && q.datavalue.value.time) {
+          year = parseInt(q.datavalue.value.time.slice(1, 5)) || 0;
+        }
+        if (year >= bestYear) { bestYear = year; best = amt; }
+      });
+      return best;
+    }
+
+    function numClaim(arr) {
+      if (!arr || !arr.length) return null;
+      const v = arr[0].mainsnak && arr[0].mainsnak.datavalue && arr[0].mainsnak.datavalue.value;
+      if (!v) return null;
+      return parseFloat((v.amount !== undefined ? v.amount : v).toString());
+    }
+
+    function fmtInt(n) { return new Intl.NumberFormat('pl-PL', { maximumFractionDigits: 0 }).format(n); }
+
+    function renderWiki(box, info) {
+      let facts = '';
+      if (info.facts) {
+        const parts = [];
+        if (info.facts.powierzchnia) parts.push('<div class="wiki-fact"><span>Powierzchnia</span><b>' + fmtInt(info.facts.powierzchnia) + ' km&sup2;</b></div>');
+        if (info.facts.ludnosc) parts.push('<div class="wiki-fact"><span>Ludnosc</span><b>' + fmtInt(info.facts.ludnosc) + '</b></div>');
+        if (parts.length) facts = '<div class="wiki-facts">' + parts.join('') + '</div>';
+      }
+      const img = info.thumb ? '<img class="wiki-thumb" src="' + info.thumb + '" alt="" onerror="this.style.display=\'none\'">' : '';
+      const extract = info.extract ? '<div class="wiki-extract">' + info.extract + '</div>' : '';
+      box.innerHTML = '<div class="wiki-divider">Z internetu (Wikipedia)</div>' + img + facts + extract +
+        '<a class="wiki-link" href="' + info.url + '" target="_blank" rel="noopener">Czytaj caly artykul &rarr;</a>';
+    }
+
+    init();
+  </script>
+</body>
+
+</html>
