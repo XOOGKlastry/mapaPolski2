@@ -944,7 +944,7 @@
     }
 
     async function init() {
-      console.log('%c[Mapa powiatów] wersja 3 — trasy + Wikipedia + poprawka pustych geometrii', 'color:#2563eb;font-weight:bold;font-size:13px');
+      console.log('%c[Mapa powiatów] wersja 4 — klik w powiat (point-in-polygon) + trasy + Wikipedia', 'color:#2563eb;font-weight:bold;font-size:13px');
       document.getElementById('loader').style.display = 'block';
 
       // WYDAJNOSC: preferCanvas rysuje wszystkie poligony i kolka miast na jednym
@@ -965,6 +965,25 @@
         if (!el) return;
         const box = el.querySelector('.wiki-box[data-loaded="false"]');
         if (box) { box.dataset.loaded = 'true'; loadWikiInto(box); }
+      });
+
+      // Klikniecie w wypelnienie powiatu. Powiaty rysowane sa na canvasie, ktory lezy
+      // pod plotnami wojewodztw i miast, wiec klikniecie nie zawsze trafia wprost w warstwe
+      // powiatow. Gdy pod kursorem nie ma miasta, Leaflet odpala zdarzenie na mapie, a my
+      // wyznaczamy powiat pod punktem (point-in-polygon) i otwieramy jego dymek.
+      map.on('click', (e) => {
+        if (!geoLayer) return;
+        const pt = [e.latlng.lng, e.latlng.lat];
+        let hit = null;
+        geoLayer.eachLayer((layer) => {
+          if (hit || !layer.feature) return;
+          try {
+            const b = layer.getBounds && layer.getBounds();
+            if (!b || !b.isValid() || !b.contains(e.latlng)) return; // tani pre-filtr po bbox
+            if (turf.booleanPointInPolygon(pt, layer.feature)) hit = layer;
+          } catch (err) { /* pomijamy wadliwe geometrie */ }
+        });
+        if (hit) hit.openPopup(e.latlng);
       });
 
       map.on('zoomend', function () {
