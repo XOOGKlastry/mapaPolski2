@@ -1065,18 +1065,24 @@
                 }
               });
             }
-            // Przycisk dodania powiatu do trasy (srodek powiatu jako przystanek)
-            const cc = l.getBounds().getCenter();
-            htmlPopup += `<button class="route-add-btn" onclick="addStopFromPopup('${(name || '').replace(/'/g, "\\'")}', ${cc.lat}, ${cc.lng}, 'powiat')">+ Dodaj do trasy</button>`;
+            // Bezpieczny srodek powiatu. Chroni przed pustymi lub zdegenerowanymi
+            // geometriami, ktore wczesniej wywracaly budowe calej warstwy.
+            const center = getSafeCenter(l);
+            const validCenter = center && isFinite(center.lat) && isFinite(center.lng);
+
+            // Przycisk dodania powiatu do trasy (tylko gdy znamy poprawny srodek)
+            if (validCenter) {
+              htmlPopup += `<button class="route-add-btn" onclick="addStopFromPopup('${(name || '').replace(/'/g, "\\'")}', ${center.lat}, ${center.lng}, 'powiat')">+ Dodaj do trasy</button>`;
+            }
             // Kontener na dane z internetu, wypelniany przy otwarciu dymka
             htmlPopup += `<div class="wiki-box" data-loaded="false" data-county="${(name || '').replace(/"/g, '&quot;')}"><div class="wiki-loading"><span class="spinner"></span> Wczytywanie informacji...</div></div>`;
 
             l.bindPopup(htmlPopup, { minWidth: 240, maxWidth: 320, maxHeight: 420 });
             l.on('click', (e) => {
-              map.flyToBounds(e.target.getBounds(), { padding: [20, 20], maxZoom: 10 });
+              const b = e.target.getBounds && e.target.getBounds();
+              if (b && b.isValid()) map.flyToBounds(b, { padding: [20, 20], maxZoom: 10 });
             });
 
-            const center = getSafeCenter(l);
             if (center) {
               const bounds = l.getBounds();
               const width = Math.abs(bounds.getEast() - bounds.getWest());
